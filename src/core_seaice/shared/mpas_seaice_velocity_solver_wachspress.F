@@ -134,18 +134,23 @@ contains
     allocate(wachspressA(maxEdges,nCells))
     allocate(wachspressB(maxEdges,nCells))
 
+    call mpas_timer_start("wachpress calc_local_coords")
     call seaice_calc_local_coords(&
          mesh, &
          xLocal, &
          yLocal, &
          rotateCartesianGrid)
+    call mpas_timer_stop("wachpress calc_local_coords")
 
+    call mpas_timer_start("wachpress calc_metric_terms")
     call seaice_calc_variational_metric_terms(&
          mesh, &
          tanLatVertexRotatedOverRadius, &
          rotateCartesianGrid, &
          includeMetricTerms)
+    call mpas_timer_stop("wachpress calc_metric_terms")
 
+    call mpas_timer_start("wachpress calc_coefficients")
     call calc_wachspress_coefficients(&
          mesh, &
          wachspressKappa, &
@@ -153,7 +158,9 @@ contains
          wachspressB, &
          xLocal, &
          yLocal)
+    call mpas_timer_stop("wachpress calc_coefficients")
 
+    call mpas_timer_start("wachpress calc_derivatives")
     call calculate_wachspress_derivatives(&
          mesh, &
          basisGradientU, &
@@ -163,7 +170,9 @@ contains
          wachspressA, &
          wachspressB, &
          wachspressKappa)
+    call mpas_timer_stop("wachpress calc_derivatives")
 
+    call mpas_timer_start("wachpress integrate")
     call integrate_wachspress(&
          mesh, &
          basisIntegralsU, &
@@ -176,10 +185,13 @@ contains
          wachspressKappa, &
          integrationType, &
          integrationOrder)
+    call mpas_timer_stop("wachpress integrate")
 
+    call mpas_timer_start("wachpress vertices_at_vertex")
     call seaice_cell_vertices_at_vertex(&
          mesh, &
          cellVerticesAtVertex)
+    call mpas_timer_stop("wachpress vertices_at_vertex")
 
     deallocate(xLocal)
     deallocate(yLocal)
@@ -1089,6 +1101,7 @@ contains
          integrationWeights, &
          normalizationFactor)
 
+    !$omp parallel do default(shared) private(iStressVertex, iVelocityVertex)
     do iCell = 1, nCells
 
        do iStressVertex = 1, nEdgesOnCell(iCell)

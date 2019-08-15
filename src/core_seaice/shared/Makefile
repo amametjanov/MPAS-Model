@@ -50,10 +50,16 @@ mpas_seaice_velocity_solver_weak.o: mpas_seaice_constants.o mpas_seaice_testing.
 mpas_seaice_velocity_solver_variational_shared.o: mpas_seaice_constants.o
 
 mpas_seaice_velocity_solver_wachspress.o: mpas_seaice_constants.o mpas_seaice_numerics.o mpas_seaice_mesh.o mpas_seaice_testing.o mpas_seaice_velocity_solver_variational_shared.o
+	$(RM) $@ $*.mod $*.f90
+	$(CPP) $(CPPFLAGS) $(CPPINCLUDES) $*.F > $*.f90
+	$(FC) $(FFLAGS) -O3 -c $*.f90 $(FCINCLUDES) -I../../framework -I../../operators -I../../external/esmf_time_f90 -I../column
 
 mpas_seaice_velocity_solver_pwl.o: mpas_seaice_constants.o mpas_seaice_numerics.o mpas_seaice_mesh.o mpas_seaice_testing.o mpas_seaice_velocity_solver_variational_shared.o
 
 mpas_seaice_velocity_solver_variational.o: mpas_seaice_constants.o mpas_seaice_velocity_solver_constitutive_relation.o mpas_seaice_velocity_solver_wachspress.o mpas_seaice_velocity_solver_pwl.o
+	$(RM) $@ $*.mod $*.f90
+	$(CPP) $(CPPFLAGS) $(CPPINCLUDES) $*.F > $*.f90
+	$(FC) $(FFLAGS) -O3 -c $*.f90 $(FCINCLUDES) -I../../framework -I../../operators -I../../external/esmf_time_f90 -I../column
 
 mpas_seaice_velocity_solver.o: mpas_seaice_constants.o mpas_seaice_mesh.o mpas_seaice_testing.o mpas_seaice_velocity_solver_weak.o mpas_seaice_velocity_solver_constitutive_relation.o mpas_seaice_velocity_solver_variational.o mpas_seaice_diagnostics.o
 

@@ -283,12 +283,12 @@ contains
     type(MPAS_pool_type), pointer, intent(in) :: &
          mesh !< Input:
 
-    real(kind=RKIND), dimension(:,:), intent(out) :: &
+    real(kind=RKIND), dimension(:,:), contiguous, intent(out) :: &
          strain11, & !< Output:
          strain22, & !< Output:
          strain12    !< Output:
 
-    real(kind=RKIND), dimension(:), intent(in) :: &
+    real(kind=RKIND), dimension(:), contiguous, intent(in) :: &
          uVelocity, & !< Input:
          vVelocity, & !< Input:
          tanLatVertexRotatedOverRadius !< Input:
@@ -297,7 +297,7 @@ contains
          basisGradientU, & !< Input:
          basisGradientV    !< Input:
 
-    integer, dimension(:), intent(in) :: &
+    integer, dimension(:), contiguous, intent(in) :: &
          solveStress !< Input:
 
     integer :: &
@@ -315,7 +315,7 @@ contains
     integer, pointer :: &
          nCells
 
-    integer, dimension(:), pointer :: &
+    integer, dimension(:), contiguous, pointer :: &
          nEdgesOnCell
 
     integer, dimension(:,:), contiguous, pointer :: &
@@ -328,13 +328,14 @@ contains
     call MPAS_pool_get_array(mesh, "verticesOnCell", verticesOnCell)
 
     ! loop over cells
-    !$omp parallel do default(shared) private(iCell, iGradientVertex, iBasisVertex, iVertex, jVertex,&
+    !$omp parallel do default(shared) private(iGradientVertex, iBasisVertex, iVertex, jVertex,&
     !$omp&                                    strain11Tmp, strain22Tmp, strain12Tmp)
     do iCell = 1, nCells
 
        if (solveStress(iCell) == 1) then
 
           ! loop over velocity points surrounding cell - location of stress and derivative
+          !$omp simd
           do iGradientVertex = 1, nEdgesOnCell(iCell)
 
              strain11Tmp = 0.0_RKIND
@@ -396,7 +397,6 @@ contains
        revisedEVP)!{{{
 
     use seaice_velocity_solver_constitutive_relation, only: &
-         seaice_evp_constitutive_relation, &
          seaice_evp_constitutive_relation_revised
 
     type(MPAS_pool_type), pointer, intent(in) :: &
@@ -415,10 +415,10 @@ contains
          strain22, & !< Input:
          strain12    !< Input:
 
-    real(kind=RKIND), dimension(:), intent(in) :: &
+    real(kind=RKIND), dimension(:), contiguous, intent(in) :: &
          icePressure !< Input:
 
-    integer, dimension(:), intent(in) :: &
+    integer, dimension(:), contiguous, intent(in) :: &
          solveStress !< Input:
 
     real(kind=RKIND), intent(in) :: &
@@ -448,17 +448,17 @@ contains
 
     if (.not. revisedEVP) then
 
-       !$omp parallel do default(shared) private(iCell, iVertexOnCell)
+       !$omp parallel do default(shared) private(iVertexOnCell)
        do iCell = 1, nCells
 
-          replacementPressure(:,iCell) = 0.0_RKIND
-
           if (solveStress(iCell) == 1) then
+
+             replacementPressure(:,iCell) = 0.0_RKIND
 
              !$omp simd
              do iVertexOnCell = 1, nEdgesOnCell(iCell)
 
-                call seaice_evp_constitutive_relation(&
+                call seaice_evp_constitutive_relation_simd(&
                      stress11(iVertexOnCell,iCell), &
                      stress22(iVertexOnCell,iCell), &
                      stress12(iVertexOnCell,iCell), &
@@ -478,7 +478,7 @@ contains
 
     else
 
-       !$omp parallel do default(shared) private(iCell, iVertexOnCell)
+       !$omp parallel do default(shared) private(iVertexOnCell)
        do iCell = 1, nCells
 
           if (solveStress(iCell) == 1) then
@@ -536,7 +536,7 @@ contains
     type(MPAS_pool_type), pointer, intent(in) :: &
          mesh !< Input:
 
-    real(kind=RKIND), dimension(:), intent(out) :: &
+    real(kind=RKIND), dimension(:), contiguous, intent(out) :: &
          stressDivergenceU, & !< Output:
          stressDivergenceV    !< Output:
 
@@ -550,16 +550,19 @@ contains
          basisIntegralsV, &   !< Input:
          basisIntegralsMetric !< Input:
 
-    real(kind=RKIND), dimension(:), intent(in) :: &
+    real(kind=RKIND), dimension(:), contiguous, intent(in) :: &
          tanLatVertexRotatedOverRadius !< Input:
 
-    integer, dimension(:,:), intent(in) :: &
+    integer, dimension(:,:), contiguous, intent(in) :: &
          cellVerticesAtVertex !< Input:
 
-    integer, dimension(:), intent(in) :: &
+    integer, dimension(:), contiguous, intent(in) :: &
          solveVelocity !< Input:
 
     real(kind=RKIND) :: &
+         tanLatVertexRotatedOverRadiusVertex, &
+         stressDivergenceUVertex, &
+         stressDivergenceVVertex, &
          stressDivergenceUCell, &
          stressDivergenceVCell
 
@@ -592,13 +595,16 @@ contains
     call MPAS_pool_get_array(mesh, "areaTriangle", areaTriangle)
 
     ! loop over velocity positions
-    !$omp parallel do default(shared) private(iVertex, iSurroundingCell, iCell, iVelocityVertex, stressDivergenceUCell, stressDivergenceVCell, iStressVertex)
+    !$omp parallel do default(shared) private(stressDivergenceUVertex, stressDivergenceVVertex, &
+    !$omp&   tanLatVertexRotatedOverRadiusVertex, iSurroundingCell, iCell, iVelocityVertex, &
+    !$omp&   stressDivergenceUCell, stressDivergenceVCell, iStressVertex)
     do iVertex = 1, nVertices
 
        if (solveVelocity(iVertex) == 1) then
 
-          stressDivergenceU(iVertex) = 0.0_RKIND
-          stressDivergenceV(iVertex) = 0.0_RKIND
+          stressDivergenceUVertex = 0.0_RKIND
+          stressDivergenceVVertex = 0.0_RKIND
+          tanLatVertexRotatedOverRadiusVertex = tanLatVertexRotatedOverRadius(iVertex)
 
           ! loop over surrounding cells
           do iSurroundingCell = 1, vertexDegree
@@ -620,23 +626,23 @@ contains
                      stress11(iStressVertex,iCell) * basisIntegralsU(iStressVertex,iVelocityVertex,iCell) - &
                      stress12(iStressVertex,iCell) * basisIntegralsV(iStressVertex,iVelocityVertex,iCell) - &
                      stress12(iStressVertex,iCell) * basisIntegralsMetric(iStressVertex,iVelocityVertex,iCell) * &
-                     tanLatVertexRotatedOverRadius(iVertex)
+                     tanLatVertexRotatedOverRadiusVertex
 
                 stressDivergenceVCell = stressDivergenceVCell - &
                      stress22(iStressVertex,iCell) * basisIntegralsV(iStressVertex,iVelocityVertex,iCell) - &
                      stress12(iStressVertex,iCell) * basisIntegralsU(iStressVertex,iVelocityVertex,iCell) + &
                      stress11(iStressVertex,iCell) * basisIntegralsMetric(iStressVertex,iVelocityVertex,iCell) * &
-                     tanLatVertexRotatedOverRadius(iVertex)
+                     tanLatVertexRotatedOverRadiusVertex
 
              enddo ! iStressVertex
 
-             stressDivergenceU(iVertex) = stressDivergenceU(iVertex) + stressDivergenceUCell
-             stressDivergenceV(iVertex) = stressDivergenceV(iVertex) + stressDivergenceVCell
+             stressDivergenceUVertex = stressDivergenceUVertex + stressDivergenceUCell
+             stressDivergenceVVertex = stressDivergenceVVertex + stressDivergenceVCell
 
           enddo ! iSurroundingCell
 
-          stressDivergenceU(iVertex) = stressDivergenceU(iVertex) / areaTriangle(iVertex)
-          stressDivergenceV(iVertex) = stressDivergenceV(iVertex) / areaTriangle(iVertex)
+          stressDivergenceU(iVertex) = stressDivergenceUVertex / areaTriangle(iVertex)
+          stressDivergenceV(iVertex) = stressDivergenceVVertex / areaTriangle(iVertex)
 
        endif ! solveVelocity
 
@@ -798,6 +804,94 @@ contains
     deallocate(DeltaAverage)
 
   end subroutine seaice_final_divergence_shear_variational
+
+!|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+!
+!  seaice_evp_constitutive_relation_simd
+!
+!> \brief
+!> \author Adrian K. Turner, LANL
+!> \date 2013-2014
+!> \details
+!>
+!
+!-----------------------------------------------------------------------
+
+  subroutine seaice_evp_constitutive_relation_simd(&
+       stress11, &
+       stress22, &
+       stress12, &
+       strain11, &
+       strain22, &
+       strain12, &
+       icePressure, &
+       replacementPressure, &
+       areaCell, &
+       dtElastic)
+!$omp declare simd(seaice_evp_constitutive_relation_simd) uniform(icePressure,areaCell,dtElastic), notinbranch &
+!$omp& linear(ref(stress11,stress22,stress12,strain11,strain22,strain12,replacementPressure))
+
+    use seaice_velocity_solver_constitutive_relation, only: &
+         invEccentricitySquared, &
+         dampingTimescale, &
+         puny
+
+    real(kind=RKIND), intent(inout) :: &
+         stress11, & !< Input/Output:
+         stress22, & !< Input/Output:
+         stress12    !< Input/Output:
+
+    real(kind=RKIND), intent(in) :: &
+         strain11, & !< Input:
+         strain22, & !< Input:
+         strain12    !< Input:
+
+    real(kind=RKIND), intent(in) :: &
+         icePressure, & !< Input:
+         dtElastic, &   !< Input:
+         areaCell       !< Input:
+
+    real(kind=RKIND), intent(out) :: &
+         replacementPressure !< Output:
+
+    real(kind=RKIND) :: &
+         strainDivergence,    &
+         strainTension,       &
+         strainShearing,      &
+         stress1,             &
+         stress2,             &
+         Delta,               &
+         pressureCoefficient, &
+         denominator
+
+    ! convert from stress11 to stress1 etc
+    strainDivergence = strain11 + strain22
+    strainTension    = strain11 - strain22
+    strainShearing   = strain12 * 2.0_RKIND
+
+    stress1 = stress11 + stress22
+    stress2 = stress11 - stress22
+
+    ! perform the constituitive relation
+    Delta = sqrt(strainDivergence*strainDivergence + &
+                 (strainTension*strainTension + strainShearing*strainShearing) * invEccentricitySquared)
+
+    pressureCoefficient = icePressure / max(Delta,puny)
+    replacementPressure = pressureCoefficient * Delta
+
+    pressureCoefficient = (pressureCoefficient * dtElastic) / (2.0_RKIND * dampingTimescale)
+
+    denominator = 1.0_RKIND + (0.5_RKIND * dtElastic) / dampingTimescale
+
+    stress1  = (stress1  +  pressureCoefficient                           * (strainDivergence - Delta) ) / denominator
+    stress2  = (stress2  + (pressureCoefficient * invEccentricitySquared) *  strainTension             ) / denominator
+    stress12 = (stress12 + (pressureCoefficient * invEccentricitysquared) *  strainShearing * 0.5_RKIND) / denominator
+
+    ! convert back
+    stress11 = 0.5_RKIND * (stress1 + stress2)
+    stress22 = 0.5_RKIND * (stress1 - stress2)
+
+  end subroutine seaice_evp_constitutive_relation_simd
 
 !-----------------------------------------------------------------------
 

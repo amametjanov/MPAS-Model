@@ -180,6 +180,7 @@ module seaice_column
 
   real(kind=RKIND), dimension(:), allocatable :: &
        tracerArrayCell
+!$omp threadprivate(tracerArrayCell)
 
   ! warnings string kind
   integer, parameter :: strKINDWarnings = char_len_long
@@ -3204,6 +3205,7 @@ contains
        abortFlag = .false.
        abortMessage = ""
 
+       !$omp parallel do default(shared) private(iCategory,newlyFormedIceLogical) reduction(.or.:abortFlag)
        do iCell = 1, nCellsSolve
 
           ! newly formed ice
@@ -3273,15 +3275,13 @@ contains
                  tracerArrayCategory, iCell, setGetPhysicsTracers, setGetBGCTracers)
 
           ! code abort
-          if (abortFlag) exit
+          if (abortFlag) then
+             call mpas_log_write("column_ridging: "//trim(abortMessage) , messageType=MPAS_LOG_ERR)
+             call mpas_log_write("iCell: $i", messageType=MPAS_LOG_ERR, intArgs=(/indexToCellID(iCell)/))
+          endif
 
        enddo ! iCell
 
-       ! code abort
-       if (abortFlag) then
-          call mpas_log_write("column_ridging: "//trim(abortMessage) , messageType=MPAS_LOG_ERR)
-          call mpas_log_write("iCell: $i", messageType=MPAS_LOG_ERR, intArgs=(/indexToCellID(iCell)/))
-       endif
        call seaice_critical_error_write_block(domain, block, abortFlag)
        call seaice_check_critical_error(domain, abortFlag)
 
@@ -4115,6 +4115,7 @@ contains
        setGetPhysicsTracers = .true.
        setGetBGCTracers     = config_use_column_biogeochemistry
 
+       !$omp parallel do default(shared)
        do iCell = 1, nCellsSolve
 
           ! set the category tracer array
@@ -4124,11 +4125,11 @@ contains
           call colpkg_aggregate(&
                nCategories, &
                iceAreaCategory(1,:,iCell), &
-               tracerArrayCategory, & ! trcrn
+               tracerArrayCategory, & ! trcrn, intent(inout)
                iceVolumeCategory(1,:,iCell), &
                snowVolumeCategory(1,:,iCell), &
                iceAreaCell(iCell), &
-               tracerArrayCell, & ! trcr
+               tracerArrayCell, & ! trcr, intent(out)
                iceVolumeCell(iCell), &
                snowVolumeCell(iCell), &
                openWaterArea(iCell), &
@@ -5169,7 +5170,9 @@ contains
     allocate(tracerArrayCategory(tracerObject % nTracers, nCategories))
     !$omp end parallel
 
+    !$omp parallel
     allocate(tracerArrayCell(tracerObject % nTracers))
+    !$omp end parallel
 
   end subroutine init_column_tracer_object
 
